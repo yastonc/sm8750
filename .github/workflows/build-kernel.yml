@@ -1,171 +1,216 @@
-name: Build_oneplus_sm8750
+name: 加速版构建 6.6.89 欧加真OKI内核
+
+env:
+  TZ: Asia/Shanghai
+  ANDROID_VERSION: 'android15'
+  KERNEL_VERSION: '6.6'
+  SUB_VERSION: '89'
+  KERNEL_NAME: 'android15-8-g29d86c5fc9dd-abogki428889875-4k'
+  CCACHE_KEY: ccache-neov4-6.6.89
 
 on:
   workflow_dispatch:
     inputs:
       ksu_type:
-        description: "📝请选择要集成的KSU："
+        description: 'KernelSU分支(ReSukiSU/SukiSU Ultra/KernelSU Next/KSU(原版)/无内置KSU,默认ReSukiSU)'
         required: true
         type: choice
+        default: 'resukisu'
         options:
-          - 'ReSukiSU'
-          - 'SukiSU-Ultra'
-        default: 'ReSukiSU'
-        
-      device_name:
-        description: "📝请选择要编译的机型："
+          - 'resukisu'
+          - 'sukisu'
+          - 'ksunext'
+          - 'ksu'
+          - 'none'
+      susfs_enable:
+        description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
+        required: true
+        type: boolean
+        default: 'true'
+      kpm_enable:
+        description: '是否开启kpm(builtin-使用(re)sukisu内置kpm, kpn-使用独立kpm实现(支持任意KSU/面具环境); 不需要可保持默认关闭)'
         required: true
         type: choice
+        default: 'false'
         options:
-          - 'oneplus_13'
-          - 'oneplus_ace5_pro'
-          - 'oneplus_ace_6'
-          - 'oneplus_13t'
-          - 'oneplus_pad_2_pro'
-          - 'realme_GT7pro'
-          - 'realme_GT7pro_Speed'
-          - 'realme_GT8'
-        default: 'oneplus_ace5_pro'
-
-      keep_original_settings:
-        description: "📝保持原内核名称及构建时间(不懂请保持默认)"
-        required: false
-        default: true
+          - 'false'
+          - 'builtin'
+          - 'kpn'
+      lz4_enable:
+        description: '是否安装 lz4 1.10.0+zstd 1.5.7 补丁及 LZ4KD 补丁'
+        required: true
         type: boolean
-
-      custom_kernel_suffix:
-        description: "✏️ 自定义内核名称- 仅在取消勾选'保持原设置'时有效"
+        default: 'true'
+      lz4kd_enable:
+        description: '是否安装 LZ4KD 补丁(若已开启lz4+zstd补丁则可不开启)'
+        required: true
+        type: boolean
+        default: 'false'
+      bbr_enable:
+        description: "是否启用bbr算法(优化上行数据,对手机日用无太大意义甚至可能负优化;false关闭,true仅加入算法,default启用算法并设为默认)"
+        required: true
+        type: choice
+        default: 'false'
+        options:
+          - 'false'
+          - 'true'
+          - 'default'
+      better_net:
+        description: '是否开启网络功能拓展配置(用于为ipset及需要iptables等高级网络功能内核支持的程序提供支持)'
+        required: true
+        type: boolean
+        default: 'false'
+      adios_enable:
+        description: '是否启用ADIOS IO调度器支持(提升IO读写性能)'
+        required: true
+        type: boolean
+        default: 'true'
+      rekernel_enable:
+        description: '是否启用Re-Kernel支持(与Freezer/NoActive等软件配合, 提升应用冻结能力)'
+        required: true
+        type: boolean
+        default: 'false'
+      baseband_guard:
+        description: '是否开启内核级基带保护(阻止一切对非用户分区的写入，有效防止格机)'
+        required: true
+        type: boolean
+        default: 'true'
+      ccache_update:
+        description: '更新ccache缓存(将本次编译生成的ccache缓存覆盖至仓库缓存，在更改编译配置、源码或需要刷新缓存时开启)'
+        required: true
+        type: boolean
+        default: 'false'
+      ccache_debug:
+        description: '是否上传 Ccache调试日志(用于调试, 无需要不必开启)'
+        required: true
+        type: boolean
+        default: 'false'
+      kernel_suffix:
+        description: '内核后缀(留空默认,开头别加连字符,勿加空格等影响指令运行的保留字符)'
         required: false
+        type: string
         default: ''
-      
-      custom_kernel_time:
-        description: "⏰ 自定义构建时间- 仅在取消勾选'保持原设置'时有效"
-        required: false
-        default: ''
-
-      enable_scx:
-        description: "添加完美风驰"
-        required: false
-        default: true
-        type: boolean
-
-      enable_bbg:
-        description: "开启BBG基带守护"
-        required: false
-        default: true
-        type: boolean
 
 jobs:
   build:
-    name: Build_${{ github.event.inputs.device_name }}_${{ github.event.inputs.ksu_type }}
     runs-on: ubuntu-latest
-    env:
-      KSU_TYPE: ${{ github.event.inputs.ksu_type }}
-      DEVICES_NAME: ${{ github.event.inputs.device_name }}
-      KEEP_ORIGINAL_SETTINGS: ${{ github.event.inputs.keep_original_settings }}
-      CUSTOM_KERNEL_SUFFIX: ${{ github.event.inputs.custom_kernel_suffix }}
-      CUSTOM_KERNEL_TIME: ${{ github.event.inputs.custom_kernel_time }}
-      ENABLE_SCX: ${{ github.event.inputs.enable_scx }}
-      ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
+    outputs:
+      ksuver: ${{ steps.ksu_version.outputs.ksuver }}
+      ak3name: ${{ steps.create_zip.outputs.ak3name }}
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
-      - name: ⚙️ 设置机型配置
+      - name: 安装环境依赖+初始化源码仓库及llvm-Clang18工具链
         run: |
-          case "${{ env.DEVICES_NAME }}" in
-            oneplus_ace5_pro)
-              echo "KERNEL_DEFCONFIG=oneplus_sm8750_b_defconfig" >> $GITHUB_ENV
-              ;;
-            oneplus_13)
-              echo "KERNEL_DEFCONFIG=oneplus_sm8750_defconfig" >> $GITHUB_ENV
-              ;;
-            oneplus_ace_6)
-              echo "KERNEL_DEFCONFIG=oneplus_ace6_defconfig" >> $GITHUB_ENV
-              ;;
-            oneplus_13t)
-              echo "KERNEL_DEFCONFIG=oneplus_13t_b_defconfig" >> $GITHUB_ENV
-              ;;
-            oneplus_pad_2_pro)
-              echo "KERNEL_DEFCONFIG=oneplus_pad2pro_b_defconfig" >> $GITHUB_ENV
-              ;;
-            realme_GT7pro|realme_GT7pro_Speed|realme_GT8)
-              echo "KERNEL_DEFCONFIG=oneplus_sm8750_b_defconfig" >> $GITHUB_ENV
-              ;;
-          esac
+          rm -rf kernel_workspace
+          mkdir kernel_workspace
+          cd kernel_workspace
+          echo "当前仓库：$GITHUB_REPOSITORY"
+          echo "当前分支：$GITHUB_REF_NAME"
 
-          if [ "${{ env.KEEP_ORIGINAL_SETTINGS }}" = "true" ]; then
-            echo "DEFAULT_SUFFIX=-yastonc-v14" >> $GITHUB_ENV
-            echo "KERNEL_TIME=Fri Sep 19 06:13:40 UTC 2025" >> $GITHUB_ENV
-          else
-            echo "DEFAULT_SUFFIX=${{ env.CUSTOM_KERNEL_SUFFIX }}" >> $GITHUB_ENV
-            echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
-          fi
-
-      - name: 🛠 安装依赖
-        run: |
+          sudo apt-mark hold firefox libc-bin
+          sudo apt purge -y man-db
+          sudo rm -rf /var/lib/man-db/auto-update
           sudo apt update -y
-          sudo apt install -y bc bison flex build-essential libssl-dev libelf-dev git zip curl lld llvm python3 python-is-python3 ccache aria2 zstd unzip
+          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache aria2 zstd git
 
-      - name: 🧰 初始化工作区
-        run: |
-          rm -rf kernel_workspace && mkdir kernel_workspace
-          cd kernel_workspace
-
-      - name: 📥 克隆 yastonc 内核源码
-        run: |
-          cd kernel_workspace
+          # 克隆 yastonc SM8750 源码
           git clone https://github.com/yastonc/android_kernel_common_oneplus_sm8750.git -b v14 common
 
-      - name: 📥 克隆 Clang18 工具链
-        run: |
-          cd kernel_workspace
+          # 合并谷歌上游 6.6.y
+          cd common
+          git remote add upstream https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+          git fetch upstream linux-6.6.y
+          git merge upstream/linux-6.6.y --strategy-option theirs --allow-unrelated-histories || true
+          cd ..
+
+          # Clang18
           mkdir -p clang18
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip
-          unzip -q clang.zip -d clang18 && rm -f clang.zip
+          unzip -q clang.zip -d clang18
+          rm -f clang.zip
 
-      - name: 🧹 清理 dirty & ABI
-        run: |
-          cd kernel_workspace/common
-          rm -f android/abi_gki_protected_exports_* || true
-          for f in scripts/setlocalversion; do
+          # build-tools
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip
+          unzip -q build-tools.zip
+          rm -f build-tools.zip
+
+          # 清理 ABI & dirty
+          rm -f common/android/abi_gki_protected_exports_* || true
+          for f in common/scripts/setlocalversion; do
             sed -i 's/ -dirty//g' "$f"
+            sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' "$f"
           done
 
-      - name: 🧩 集成 KSU
+      - name: 配置ccache目录
         run: |
-          cd kernel_workspace/common
-          if [ "$KSU_TYPE" = "ReSukiSU" ]; then
-            git clone https://github.com/Resukisu/Resukisu.git --depth=1 ../resukisu
-            cd ../resukisu
-            bash patch.sh apply ../common || true
-          else
-            curl -LSs https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh | bash -s builtin
+          echo "CCACHE_DIR=$HOME/.ccache_${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=3G" >> $GITHUB_ENV
+          df -h
+
+      - name: 载入当前版本内核的 ccache缓存
+        uses: actions/cache@v5
+        id: ccache-restore
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            ${{ env.CCACHE_KEY }}-${{ runner.os }}-
+            ${{ env.CCACHE_KEY }}-
+
+      - name: 拉取公共预置 ccache 缓存
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -d "${{ env.CCACHE_DIR }}" ] && [ "$(ls -A ${{ env.CCACHE_DIR }} 2>/dev/null)" ]; then
+            echo "本地缓存已存在，跳过公共缓存"
+            exit 0
+          fi
+          mkdir -p ${{ env.CCACHE_DIR }}
+          FILE_NAME="ccache-${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}.tar.zst"
+          if gh release download -p "$FILE_NAME" -R cctv18/public_ccache; then
+            tar -I zstd -xf "$FILE_NAME" -C ${{ env.CCACHE_DIR }}
+            echo "公共ccache恢复成功"
           fi
 
-      - name: 🧩 集成 BBG
-        if: ${{ env.ENABLE_BBG == 'true' }}
+      - name: 清除旧 ccache 缓存
+        if: inputs.ccache_update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd kernel_workspace
-          git clone https://github.com/BoringBoredGroup/BBG-Kernel-Patches.git --depth=1 bbg
-          cd bbg
-          for i in *.patch; do git apply --quiet ../common/$i || true; done
+          gh cache delete ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }} -R ${{ github.repository }} || echo "无旧缓存"
 
-      - name: 🧩 集成 SCX 风驰
-        if: ${{ env.ENABLE_SCX == 'true' }}
+      - name: 初始化并配置ccache
+        run: |
+          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
+          mkdir -p "$CCACHE_DIR"
+          ccache -M 3G
+          ccache -o compression=true
+          ccache -s
+
+      - name: 添加KernelSU
+        id: ksu_version
         run: |
           cd kernel_workspace/common
-          curl -LSs https://raw.githubusercontent.com/007kylee/scx/main/patch.sh | bash || true
+          if [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
+            git clone https://github.com/Resukisu/Resukisu.git --depth=1 ../resukisu
+            cd ../resukisu
+            bash patch.sh apply ../common
+            echo "ksuver=ReSukiSU" >> $GITHUB_OUTPUT
+          elif [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
+            curl -LSs https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh | bash -s builtin
+            echo "ksuver=SukiSU-Ultra" >> $GITHUB_OUTPUT
+          elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
+            curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -s main
+            echo "ksuver=KernelSU" >> $GITHUB_OUTPUT
+          else
+            echo "ksuver=None" >> $GITHUB_OUTPUT
+          fi
 
-      - name: ⏰ 设置内核构建时间
-        run: |
-          cd kernel_workspace/common
-          mkdir -p include/generated
-          cat > include/generated/compile.h << EOF
-#define LINUX_COMPILE_TIME "${{ env.KERNEL_TIME }}"
-#define LINUX_COMPILE_HOST "yastonc"
-EOF
-
-      - name: 🔨 开始编译内核
+      - name: 编译内核
         run: |
           cd kernel_workspace/common
           export ARCH=arm64
@@ -173,19 +218,136 @@ EOF
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LD=../clang18/bin/ld.lld
           export PATH=../clang18/bin:$PATH
-          make ${{ env.KERNEL_DEFCONFIG }}
+          make oneplus_sm8750_defconfig
           make -j$(nproc)
 
-      - name: 📦 打包 AnyKernel3
+          stat ./Makefile
+          echo "内核编译完成！"
+          ccache -s
+          df -h
+
+      - name: 保存新的 ccache 缓存
+        if: inputs.ccache_update || steps.ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}
+
+      - name: 应用KPM并修补内核
+        run: |
+          if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
+            echo "正在应用KPM..."
+            cd kernel_workspace/common/arch/arm64/boot
+            curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest/download/patch_linux
+            chmod +x patch_linux
+            ./patch_linux
+            rm -f Image
+            mv oImage Image
+          fi
+          if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
+            echo "正在应用KP-N..."
+            cd kernel_workspace/common/arch/arm64/boot
+            wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kptools-linux
+            wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kpimg-linux
+            chmod +x ./kptools-linux
+            ./kptools-linux -p -i ./Image -k ./kpimg-linux -o ./oImage
+            rm -f Image
+            mv oImage Image
+          fi
+
+      - name: 克隆 AnyKernel3 并打包
+        id: create_zip
         run: |
           cd kernel_workspace
-          git clone https://github.com/osm0sis/AnyKernel3.git --depth=1 ak3
-          cp common/arch/arm64/boot/Image.gz ak3/
-          cd ak3
-          zip -r9 Kernel_${{ env.DEVICES_NAME }}_yastonc.zip *
+          git clone https://github.com/cctv18/AnyKernel3 --depth=1
+          rm -rf ./AnyKernel3/.git
+          cd AnyKernel3
+          cp ../common/arch/arm64/boot/Image ./Image
 
-      - name: 🚀 上传成品
-        uses: actions/upload-artifact@v4
+          if [[ ! -f ./Image ]]; then
+            echo "未找到内核镜像"
+            exit 1
+          fi
+
+          if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
+            KSU_TYPENAME="SukiSU"
+          elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
+            KSU_TYPENAME="ReSukiSU"
+          elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
+            KSU_TYPENAME="KSUNext"
+          elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
+            KSU_TYPENAME="KSU"
+          else
+            KSU_TYPENAME="none"
+          fi
+
+          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
+            wget https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$GITHUB_REF_NAME/zram.zip
+          fi
+          if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
+            wget https://github.com/cctv18/KPatch-Next/releases/latest/download/kpn.zip
+          fi
+
+          KSUVER=${{ needs.build.outputs.ksuver }}
+          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
+            AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${KSUVER}_${{ env.KERNEL_VERSION }}_${{ github.event.inputs.kernel_suffix }}.zip
+          else
+            AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${KSUVER}_${{ env.KERNEL_VERSION }}_${{ env.KERNEL_NAME }}.zip
+          fi
+
+          zip -r ../$AK3_NAME ./*
+          echo "ak3name=$AK3_NAME" >> $GITHUB_OUTPUT
+
+          TIME_NOW="$(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M:%S')"
+          echo "Author: $GITHUB_ACTOR" > ak3.log
+          echo "Repo: $GITHUB_REPOSITORY" >> ak3.log
+          echo "Branch: $GITHUB_REF_NAME" >> ak3.log
+          echo "Run ID: $GITHUB_RUN_ID" >> ak3.log
+          echo "Commit: $GITHUB_SHA" >> ak3.log
+          echo "Time: $TIME_NOW" >> ak3.log
+          echo "Kernel Ver: ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" >> ak3.log
+          echo "KSU: $KSU_TYPENAME" >> ak3.log
+          zip -z ../$AK3_NAME < ak3.log
+
+      - name: 上传 ZIP
+        uses: actions/upload-artifact@v7
         with:
-          name: Kernel_${{ env.DEVICES_NAME }}_yastonc
-          path: kernel_workspace/ak3/Kernel_*.zip
+          path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载内核包
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.ak3name }}
+          path: ./release_zips
+
+      - name: 设置版本信息
+        run: |
+          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
+            FULL_VERSION=${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}-${{ github.event.inputs.kernel_suffix }}
+          else
+            FULL_VERSION=${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}-${{ env.KERNEL_NAME }}
+          fi
+          echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+          echo "TIME=$(TZ=Asia/Shanghai date +%y%m%d%H%M%S)" >> $GITHUB_ENV
+          echo "TIME_FORM=$(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "TAG_HEAD=OPPO-OPlus-Realme-build" >> $GITHUB_ENV
+
+      - name: 创建发布
+        uses: softprops/action-gh-release@v2.5.0
+        with:
+          tag_name: "${{ env.TAG_HEAD }}-${{ env.TIME }}"
+          name: "${{ env.TAG_HEAD }}-${{ env.FULL_VERSION }}"
+          body: |
+            ### 欧加真 SM8750 通用内核
+            内核版本：${{ env.FULL_VERSION }}
+            编译时间：${{ env.TIME_FORM }}
+            基于：yastonc + 谷歌上游 6.6.y
+          draft: false
+          prerelease: false
+          files: release_zips/*
