@@ -145,12 +145,14 @@ jobs:
             echo "KERNEL_TIME=${{ github.event.inputs.custom_kernel_time }}" >> $GITHUB_ENV
           fi
 
+      # 🔹 修复：移除 python2，改用 python3 + 软链接兼容
       - name: 🛠 Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y bc bison flex build-essential libssl-dev libelf-dev git zip curl lld llvm python3 python2 patch
+          sudo apt install -y bc bison flex build-essential libssl-dev libelf-dev \
+            git zip curl lld llvm python3 patch
+          sudo ln -sf python3 /usr/bin/python
 
-      # 🔹 核心：切换为 yastonc 源码（v14 分支）
       - name: 🧩 Clone yastonc kernel source
         run: |
           git clone https://github.com/yastonc/android_kernel_common_oneplus_sm8750.git -b v14 common
