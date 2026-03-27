@@ -284,42 +284,34 @@ jobs:
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
           fi
 
-      - name: 应用 KernelSU & SUSFS 补丁
+      - name: 应用 KernelSU & SUSFS 补丁（适配 cctv18/susfs4oki）
         if: inputs.susfs_enable
         run: |
           cd kernel_workspace
           if [[ ${{ github.event.inputs.ksu_type }} != "none" ]]; then
-            echo "正在添加susfs补丁..."
-            # 直接克隆默认分支，避免指定不存在的分支
-            git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
-            # 下载隐藏进程补丁
-            wget https://gitlab.com/simonpunk/susfs4ksu/-/raw/master/69_hide_stuff.patch -O ./common/69_hide_stuff.patch
-            # 复制补丁文件：优先使用版本匹配的补丁，否则 fallback 到通用补丁
-            if [ -f "./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch" ]; then
-              cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-            else
-              cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki.patch ./common/
-            fi
+            echo "正在添加susfs补丁（来自 cctv18/susfs4oki）..."
+            # 克隆 cctv18/susfs4oki 仓库
+            git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu
+            # 复制核心补丁文件（按仓库目录结构）
+            cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
             cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
             cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+            # 若存在 KSU 专属补丁则复制
+            if [ -f "./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ]; then
+              cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
+            fi
             cd ./common
             # 应用 SUSFS 核心补丁
-            if [ -f "50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch" ]; then
-              patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            else
-              patch -p1 < 50_add_susfs_in_gki.patch || true
-            fi
-            # 应用隐藏进程补丁
-            patch -p1 -N -F 3 < 69_hide_stuff.patch || true
+            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
             cd ..
+            # 为原版 KSU 应用专属补丁
+            if [[ ${{ github.event.inputs.ksu_type }} == "ksu" && -f "./KernelSU/10_enable_susfs_for_ksu.patch" ]]; then
+              cd ./KernelSU
+              patch -p1 < 10_enable_susfs_for_ksu.patch || true
+              cd ..
+            fi
           else
             echo "已选择无内置KernelSU模式，跳过susfs配置..."
-          fi
-          if [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
-            echo "正在为原版 KernelSU (tiann/KernelSU)添加补丁..."
-            cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
-            cd ./KernelSU
-            patch -p1 < 10_enable_susfs_for_ksu.patch || true
           fi
           
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
