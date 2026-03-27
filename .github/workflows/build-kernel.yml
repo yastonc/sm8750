@@ -1,4 +1,5 @@
 name: Build_oneplus_sm8750
+
 on:
   workflow_dispatch:
     inputs:
@@ -21,8 +22,6 @@ on:
           - 'oneplus_ace_6'
           - 'oneplus_13t'
           - 'oneplus_pad_2_pro'
-          - 'oneplus_ace5_ultra'
-          - 'realme_GT7'
           - 'realme_GT7pro'
           - 'realme_GT7pro_Speed'
           - 'realme_GT8'
@@ -35,12 +34,12 @@ on:
         type: boolean
 
       custom_kernel_suffix:
-        description: "✏️ 自定义内核名称- 仅在取消勾选'保持原设置'时有效(不懂请保持默认)"
+        description: "✏️ 自定义内核名称- 仅在取消勾选'保持原设置'时有效"
         required: false
         default: ''
       
       custom_kernel_time:
-        description: "⏰ 自定义构建时间- 仅在取消勾选'保持原设置'时有效(不懂请保持默认)"
+        description: "⏰ 自定义构建时间- 仅在取消勾选'保持原设置'时有效"
         required: false
         default: ''
 
@@ -61,151 +60,132 @@ jobs:
     name: Build_${{ github.event.inputs.device_name }}_${{ github.event.inputs.ksu_type }}
     runs-on: ubuntu-latest
     env:
-      KSU_TYPE:           ${{ github.event.inputs.ksu_type }}
-      DEVICES_NAME:           ${{ github.event.inputs.device_name }}
+      KSU_TYPE: ${{ github.event.inputs.ksu_type }}
+      DEVICES_NAME: ${{ github.event.inputs.device_name }}
       KEEP_ORIGINAL_SETTINGS: ${{ github.event.inputs.keep_original_settings }}
-      CUSTOM_KERNEL_SUFFIX:   ${{ github.event.inputs.custom_kernel_suffix }}
-      CUSTOM_KERNEL_TIME:     ${{ github.event.inputs.custom_kernel_time }}
-      ENABLE_SCX:       ${{ github.event.inputs.enable_scx }}
-      ENABLE_BBG:       ${{ github.event.inputs.enable_bbg }}
+      CUSTOM_KERNEL_SUFFIX: ${{ github.event.inputs.custom_kernel_suffix }}
+      CUSTOM_KERNEL_TIME: ${{ github.event.inputs.custom_kernel_time }}
+      ENABLE_SCX: ${{ github.event.inputs.enable_scx }}
+      ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
-      - name: ⚙️ Set REPO_MANIFEST & SCHED_FILE
+      - name: ⚙️ 设置机型配置
         run: |
           case "${{ env.DEVICES_NAME }}" in
             oneplus_ace5_pro)
-              echo "REPO_MANIFEST=sm8750_b_16.0.0_oneplus_ace5_pro" >> $GITHUB_ENV
-              echo "SCHED_FILE=oneplus_ace5_pro_b" >> $GITHUB_ENV
+              echo "KERNEL_DEFCONFIG=oneplus_sm8750_b_defconfig" >> $GITHUB_ENV
               ;;
             oneplus_13)
-              echo "REPO_MANIFEST=sm8750_b_16.0.0_oneplus_13" >> $GITHUB_ENV
-              echo "SCHED_FILE=oneplus_13_b" >> $GITHUB_ENV
+              echo "KERNEL_DEFCONFIG=oneplus_sm8750_defconfig" >> $GITHUB_ENV
               ;;
             oneplus_ace_6)
-              echo "REPO_MANIFEST=sm8750_b_16.0.0_ace_6" >> $GITHUB_ENV
-              echo "SCHED_FILE=oneplus_ace_6" >> $GITHUB_ENV
+              echo "KERNEL_DEFCONFIG=oneplus_ace6_defconfig" >> $GITHUB_ENV
               ;;
             oneplus_13t)
-              echo "REPO_MANIFEST=sm8750_b_16.0.0_oneplus_13t" >> $GITHUB_ENV
-              echo "SCHED_FILE=oneplus_13t_b" >> $GITHUB_ENV
+              echo "KERNEL_DEFCONFIG=oneplus_13t_b_defconfig" >> $GITHUB_ENV
               ;;
             oneplus_pad_2_pro)
-              echo "REPO_MANIFEST=sm8750_b_16.0.0_pad_2_pro" >> $GITHUB_ENV
-              echo "SCHED_FILE=oneplus_pad_2_pro_b" >> $GITHUB_ENV
+              echo "KERNEL_DEFCONFIG=oneplus_pad2pro_b_defconfig" >> $GITHUB_ENV
               ;;
-            oneplus_ace5_ultra | realme_GT7)
-              echo "REPO_MANIFEST=mt6991_b_16.0.0_oneplus_ace5_ultra" >> $GITHUB_ENV
-              echo "SCHED_FILE=oneplus_ace5_ultra_b" >> $GITHUB_ENV
-              ;;
-            realme_GT7pro | realme_GT7pro_Speed | realme_GT8)
-              echo "SCHED_FILE=none" >> $GITHUB_ENV
+            realme_GT7pro|realme_GT7pro_Speed|realme_GT8)
+              echo "KERNEL_DEFCONFIG=oneplus_sm8750_b_defconfig" >> $GITHUB_ENV
               ;;
           esac
 
-          if [ "${{ env.KEEP_ORIGINAL_SETTINGS }}" = "true" ] && [ -z "${{ github.event.inputs.custom_kernel_suffix }}" ]; then
-            case "${{ env.DEVICES_NAME }}" in
-              oneplus_pad_2_pro)
-                DEFAULT_SUFFIX='-android15-8-g5a0ffb447c1d-ab13771415-4k'
-                ;;
-              oneplus_ace5_ultra | realme_GT7)
-                DEFAULT_SUFFIX='-android15-8-g29d86c5fc9dd-abogki428889875-4k'
-                ;;
-              oneplus_13)
-                DEFAULT_SUFFIX='-android15-8-g7e1f3c083cc6-abogki467167594-4k'
-                ;;
-              oneplus_ace5_pro | oneplus_ace_6 | oneplus_13t | realme_GT7pro | realme_GT7pro_Speed | realme_GT8)
-                DEFAULT_SUFFIX='-android15-8-gf4dc45704e54-abogki446052083-4k'
-                ;;
-            esac
-            echo "DEFAULT_SUFFIX=$DEFAULT_SUFFIX" >> $GITHUB_ENV
+          if [ "${{ env.KEEP_ORIGINAL_SETTINGS }}" = "true" ]; then
+            echo "DEFAULT_SUFFIX=-yastonc-v14" >> $GITHUB_ENV
+            echo "KERNEL_TIME=Fri Sep 19 06:13:40 UTC 2025" >> $GITHUB_ENV
           else
-            echo "DEFAULT_SUFFIX=${{ github.event.inputs.custom_kernel_suffix }}" >> $GITHUB_ENV
+            echo "DEFAULT_SUFFIX=${{ env.CUSTOM_KERNEL_SUFFIX }}" >> $GITHUB_ENV
+            echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
           fi
 
-          if [ "${{ env.KEEP_ORIGINAL_SETTINGS }}" = "true" ] && [ -z "${{ github.event.inputs.custom_kernel_time }}" ]; then
-            case "${{ env.DEVICES_NAME }}" in
-              oneplus_pad_2_pro)
-                KERNEL_TIME='Fri Jul 11 22:46:09 UTC 2025'
-                ;;
-              oneplus_ace5_ultra | realme_GT7)
-                KERNEL_TIME='Tue Jul  1 19:48:18 UTC 2025'
-                ;;
-              oneplus_13)
-                KERNEL_TIME='Mon Dec  8 04:00:43 UTC 2025'
-                ;;
-              oneplus_ace5_pro | oneplus_ace_6 | oneplus_13t | realme_GT7pro | realme_GT7pro_Speed | realme_GT8)
-                KERNEL_TIME='Fri Sep 19 06:13:40 UTC 2025'
-                ;;
-            esac
-            echo "KERNEL_TIME=$KERNEL_TIME" >> $GITHUB_ENV
-          else
-            echo "KERNEL_TIME=${{ github.event.inputs.custom_kernel_time }}" >> $GITHUB_ENV
-          fi
-
-      # 🔹 修复：移除 python2，改用 python3 + 软链接兼容
-      - name: 🛠 Install dependencies
+      - name: 🛠 安装依赖
         run: |
-          sudo apt update
-          sudo apt install -y bc bison flex build-essential libssl-dev libelf-dev \
-            git zip curl lld llvm python3 patch
-          sudo ln -sf python3 /usr/bin/python
+          sudo apt update -y
+          sudo apt install -y bc bison flex build-essential libssl-dev libelf-dev git zip curl lld llvm python3 python-is-python3 ccache aria2 zstd unzip
 
-      - name: 🧩 Clone yastonc kernel source
+      - name: 🧰 初始化工作区
         run: |
+          rm -rf kernel_workspace && mkdir kernel_workspace
+          cd kernel_workspace
+
+      - name: 📥 克隆 yastonc 内核源码
+        run: |
+          cd kernel_workspace
           git clone https://github.com/yastonc/android_kernel_common_oneplus_sm8750.git -b v14 common
 
-      - name: 🧩 Apply Resukisu
+      - name: 📥 克隆 Clang18 工具链
         run: |
-          git clone https://github.com/Resukisu/Resukisu --depth=1 resukisu
-          cd resukisu
-          if [ -f patch.sh ]; then
+          cd kernel_workspace
+          mkdir -p clang18
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip
+          unzip -q clang.zip -d clang18 && rm -f clang.zip
+
+      - name: 🧹 清理 dirty & ABI
+        run: |
+          cd kernel_workspace/common
+          rm -f android/abi_gki_protected_exports_* || true
+          for f in scripts/setlocalversion; do
+            sed -i 's/ -dirty//g' "$f"
+          done
+
+      - name: 🧩 集成 KSU
+        run: |
+          cd kernel_workspace/common
+          if [ "$KSU_TYPE" = "ReSukiSU" ]; then
+            git clone https://github.com/Resukisu/Resukisu.git --depth=1 ../resukisu
+            cd ../resukisu
             bash patch.sh apply ../common || true
-          elif [ -f scripts/patch.sh ]; then
-            bash scripts/patch.sh apply ../common || true
+          else
+            curl -LSs https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh | bash -s builtin
           fi
 
-      - name: 🧩 Apply SUS-FS
+      - name: 🧩 集成 BBG
+        if: ${{ env.ENABLE_BBG == 'true' }}
         run: |
-          git clone https://github.com/sakurai-yt/susfs --depth=1 susfs
-          cd susfs
-          for i in *.patch; do git apply --quiet ../common/$i || true; done
-
-      - name: 🧩 Apply NoFuzz (零宽容)
-        run: |
-          git clone https://github.com/byxiaorun/NoFuzz --depth=1 nofuzz
-          cd nofuzz
-          for i in *.patch; do git apply --quiet ../common/$i || true; done
-
-      - name: 🧩 Apply BBG (可选)
-        if: ${{ github.event.inputs.enable_bbg == 'true' }}
-        run: |
-          git clone https://github.com/BoringBoredGroup/BBG-Kernel-Patches --depth=1 bbg
+          cd kernel_workspace
+          git clone https://github.com/BoringBoredGroup/BBG-Kernel-Patches.git --depth=1 bbg
           cd bbg
           for i in *.patch; do git apply --quiet ../common/$i || true; done
 
-      - name: 🛠 Build kernel
+      - name: 🧩 集成 SCX 风驰
+        if: ${{ env.ENABLE_SCX == 'true' }}
         run: |
-          cd common
+          cd kernel_workspace/common
+          curl -LSs https://raw.githubusercontent.com/007kylee/scx/main/patch.sh | bash || true
+
+      - name: ⏰ 设置内核构建时间
+        run: |
+          cd kernel_workspace/common
+          mkdir -p include/generated
+          cat > include/generated/compile.h << EOF
+#define LINUX_COMPILE_TIME "${{ env.KERNEL_TIME }}"
+#define LINUX_COMPILE_HOST "yastonc"
+EOF
+
+      - name: 🔨 开始编译内核
+        run: |
+          cd kernel_workspace/common
           export ARCH=arm64
-          export CC=clang
+          export CC=../clang18/bin/clang
           export CROSS_COMPILE=aarch64-linux-gnu-
-          export LD=ld.lld
-          make gki_defconfig
+          export LD=../clang18/bin/ld.lld
+          export PATH=../clang18/bin:$PATH
+          make ${{ env.KERNEL_DEFCONFIG }}
           make -j$(nproc)
 
-      - name: 📦 Pack with AnyKernel3
+      - name: 📦 打包 AnyKernel3
         run: |
+          cd kernel_workspace
           git clone https://github.com/osm0sis/AnyKernel3.git --depth=1 ak3
-          cp common/arch/arm64/boot/Image.gz ak3/ 2>/dev/null
-          cp common/arch/arm64/boot/Image ak3/ 2>/dev/null
+          cp common/arch/arm64/boot/Image.gz ak3/
           cd ak3
-          zip -r9 Kernel_${{ env.DEVICES_NAME }}_yastonc_v14.zip *
+          zip -r9 Kernel_${{ env.DEVICES_NAME }}_yastonc.zip *
 
-      - name: 🚀 Upload artifact
+      - name: 🚀 上传成品
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_${{ env.DEVICES_NAME }}_yastonc_v14
-          path: ak3/*.zip
+          name: Kernel_${{ env.DEVICES_NAME }}_yastonc
+          path: kernel_workspace/ak3/Kernel_*.zip
