@@ -288,28 +288,15 @@ jobs:
         if: inputs.susfs_enable
         run: |
           cd kernel_workspace
-          if [[ ${{ github.event.inputs.ksu_type }} != "none" ]]; then
-            echo "正在添加susfs补丁..."
-            git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu
-            # 关键修复：让 wget 忽略 404，即使文件不存在也不中断构建
-            wget -c --no-check-certificate https://gitlab.com/simonpunk/susfs4ksu/-/raw/master/69_hide_stuff.patch -O ./common/69_hide_stuff.patch || true
-            if [ -f "./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch" ]; then
-              cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-            else
-              cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki.patch ./common/
-            fi
-            cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-            cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-            cd ./common
-            if [ -f "50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch" ]; then
-              patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            else
-              patch -p1 < 50_add_susfs_in_gki.patch || true
-            fi
-            # 只有文件存在时才尝试打 69_hide_stuff.patch
-            if [ -f "69_hide_stuff.patch" ]; then
-              patch -p1 -N -F 3 < 69_hide_stuff.patch || true
-            fi
+                    cd kernel_workspace
+          git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-android15-6.6
+          wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/69_hide_stuff.patch -O ./common/69_hide_stuff.patch
+          cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
+          cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cd ./common
+          patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
+          patch -p1 -N -F 3 < 69_hide_stuff.patch
             cd ..
           else
             echo "已选择无内置KernelSU模式，跳过susfs配置..."
